@@ -5,3 +5,18 @@ docs/
 include/README
 lib/README
 .DS_Store
+# MAVLink 未使用的方言目录
+lib/mavlink2/generated/ASLUAV/
+lib/mavlink2/generated/AVSSUAS/
+lib/mavlink2/generated/all/
+lib/mavlink2/generated/cubepilot/
+lib/mavlink2/generated/development/
+lib/mavlink2/generated/icarous/
+lib/mavlink2/generated/loweheiser/
+lib/mavlink2/generated/minimal/
+lib/mavlink2/generated/python_array_test/
+lib/mavlink2/generated/standard/
+lib/mavlink2/generated/storm32/
+lib/mavlink2/generated/test/
+lib/mavlink2/generated/uAvionix/
+lib/mavlink2/generated/ualberta/
