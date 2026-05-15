@@ -106,7 +106,12 @@ GB 46750—2025《民用无人驾驶航空器系统运行识别规范》于 2025
 
 从项目发布页下载对应板型的固件文件，然后选择以下任意一种方式刷写。
 
-> 首次刷写裸开发板时，推荐使用包含 bootloader、partition table 和 app 的 merged 固件。若下载的是单独 app `.bin`，通常只适合已有正确 bootloader 和分区表的设备，刷写地址为 `0x10000`。
+Release 同时提供两类固件：
+
+| 文件名 | 内容 | 刷写地址 | 适用场景 |
+|--------|------|----------|----------|
+| `XC-RemoteID-<板型>-merged-<版本>.bin` | bootloader + partition table + app | `0x0` | 推荐普通用户使用；适合首次刷写裸开发板或不确定分区状态的设备 |
+| `XC-RemoteID-<板型>-app-<版本>.bin` | 仅 app 固件 | `0x10000` | 仅适合已有正确 bootloader 和分区表的设备升级 |
 
 ### 方案一：在线刷写（推荐，无需安装任何工具）
 
@@ -115,7 +120,7 @@ GB 46750—2025《民用无人驾驶航空器系统运行识别规范》于 2025
 1. 用 USB 线连接 ESP32 开发板
 2. 打开 [https://esptool.spacehuhn.com](https://esptool.spacehuhn.com)
 3. 点击 **Connect**，在弹出的串口选择框中选择你的设备（通常显示为 `USB Serial` 或 `CP210x`）
-4. 点击 **Add File**，上传下载好的 `.bin` 文件；merged 固件地址通常填 `0x0`，单 app 固件地址填 `0x10000`
+4. 点击 **Add File**，上传下载好的 `.bin` 文件；`merged` 固件地址填 `0x0`，`app` 固件地址填 `0x10000`
 5. 点击 **Program** 开始刷写，等待进度条完成
 6. 刷写完成后断开连接，重新上电
 
@@ -128,7 +133,7 @@ GB 46750—2025《民用无人驾驶航空器系统运行识别规范》于 2025
 乐鑫官方工具，适合 Windows 用户，[点击下载](https://www.espressif.com/en/support/download/other-tools)。
 
 1. 打开工具，芯片类型选择对应型号（ESP32 / ESP32-C3 / ESP32-S3）
-2. 在第一行点击 `...` 选择下载的 `.bin` 文件；merged 固件地址通常填 `0x0`，单 app 固件地址填 `0x10000`
+2. 在第一行点击 `...` 选择下载的 `.bin` 文件；`merged` 固件地址填 `0x0`，`app` 固件地址填 `0x10000`
 3. 选择正确的 COM 端口，波特率选 `921600`
 4. 点击 **START** 开始烧录
 
@@ -138,13 +143,13 @@ GB 46750—2025《民用无人驾驶航空器系统运行识别规范》于 2025
 # 安装
 pip install esptool
 
-# 烧录单 app 固件（将端口替换为实际端口）
+# 推荐：烧录 merged 固件（将端口替换为实际端口）
 esptool.py --port /dev/ttyUSB0 --baud 921600 \
-  write_flash 0x10000 XC-RemoteID-esp32c3_supermini-v1.0.0.bin
+  write_flash 0x0 XC-RemoteID-esp32c3_supermini-merged-v0.1.0.bin
 
-# 烧录 merged 固件
+# 仅升级 app：设备必须已有正确 bootloader 和分区表
 esptool.py --port /dev/ttyUSB0 --baud 921600 \
-  write_flash 0x0 XC-RemoteID-esp32c3_supermini-merged-v1.0.0.bin
+  write_flash 0x10000 XC-RemoteID-esp32c3_supermini-app-v0.1.0.bin
 ```
 
 各平台端口名称参考：

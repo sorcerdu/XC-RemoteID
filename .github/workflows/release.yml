@@ -5,17 +5,24 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        env:
-          - esp32s3_devkit
-          - esp32c3_supermini
-          - esp32c3_devkit
-          - xiao_esp32c3
+        include:
+          - env: esp32s3_devkit
+            chip: esp32s3
+          - env: esp32c3_supermini
+            chip: esp32c3
+          - env: esp32c3_devkit
+            chip: esp32c3
+          - env: xiao_esp32c3
+            chip: esp32c3
 
     steps:
       - name: Checkout
@@ -26,17 +33,28 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install PlatformIO
-        run: pip install platformio
+      - name: Install PlatformIO and esptool
+        run: pip install platformio esptool
 
       - name: Build firmware
         run: pio run -e ${{ matrix.env }}
 
-      - name: Rename firmware
+      - name: Package firmware
         run: |
           VERSION=${GITHUB_REF_NAME}
+
           cp .pio/build/${{ matrix.env }}/firmware.bin \
-             XC-RemoteID-${{ matrix.env }}-${VERSION}.bin
+             XC-RemoteID-${{ matrix.env }}-app-${VERSION}.bin
+
+          python -m esptool --chip ${{ matrix.chip }} merge_bin \
+            -o XC-RemoteID-${{ matrix.env }}-merged-${VERSION}.bin \
+            --flash_mode keep \
+            --flash_freq keep \
+            --flash_size keep \
+            0x0 .pio/build/${{ matrix.env }}/bootloader.bin \
+            0x8000 .pio/build/${{ matrix.env }}/partitions.bin \
+            0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
+            0x10000 .pio/build/${{ matrix.env }}/firmware.bin
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -75,22 +93,27 @@ jobs:
 
             | 固件文件 | 适用板型 | 说明 |
             |---------|---------|------|
-            | `XC-RemoteID-esp32s3_devkit-*.bin` | ESP32-S3 DevKitC-1 | BT5 |
-            | `XC-RemoteID-esp32c3_supermini-*.bin` | ESP32-C3 Super Mini | BT5，推荐测试板型 |
-            | `XC-RemoteID-esp32c3_devkit-*.bin` | ESP32-C3 DevKit | BT5 |
-            | `XC-RemoteID-xiao_esp32c3-*.bin` | XIAO ESP32-C3 | BT5 |
+            | `XC-RemoteID-esp32s3_devkit-merged-*.bin` | ESP32-S3 DevKitC-1 | 推荐普通用户使用，刷写地址 `0x0` |
+            | `XC-RemoteID-esp32c3_supermini-merged-*.bin` | ESP32-C3 Super Mini | 推荐普通用户使用，刷写地址 `0x0` |
+            | `XC-RemoteID-esp32c3_devkit-merged-*.bin` | ESP32-C3 DevKit | 推荐普通用户使用，刷写地址 `0x0` |
+            | `XC-RemoteID-xiao_esp32c3-merged-*.bin` | XIAO ESP32-C3 | 推荐普通用户使用，刷写地址 `0x0` |
+            | `XC-RemoteID-*-app-*.bin` | 对应板型 | 仅 app 固件，适合已有正确 bootloader 和分区表的设备升级，刷写地址 `0x10000` |
 
             ESP32 WROOM-32 仅用于开发调试，不随 Release 自动构建。
 
             ### 烧录方法
 
-            当前自动构建附件为单 app 固件，刷写地址为 `0x10000`：
+            首次刷写或不确定设备分区状态时，使用 `merged` 固件，地址 `0x0`：
 
             ```bash
-            esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x10000 XC-RemoteID-esp32c3_supermini-*.bin
+            esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 XC-RemoteID-esp32c3_supermini-merged-*.bin
             ```
 
-            首次刷写裸开发板时，需要设备已有正确 bootloader 和分区表；merged 固件后续补充。
+            已确认设备有正确 bootloader 和分区表时，可使用 `app` 固件升级，地址 `0x10000`：
+
+            ```bash
+            esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x10000 XC-RemoteID-esp32c3_supermini-app-*.bin
+            ```
 
             ### 首次配置
 
