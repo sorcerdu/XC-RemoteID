@@ -1,0 +1,7 @@
+.pio/
+.vscode/
+*.code-workspace
+docs/config_preview.html
+docs/方案评估报告.md
+include/README
+lib/README

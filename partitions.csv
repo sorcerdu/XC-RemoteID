@@ -1,0 +1,7 @@
+# XC-RemoteID partition table for 4MB Flash
+# 去掉 OTA 备份分区，为飞行日志腾出空间（GB 46750 §5.1.8 要求 ≥120h）
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+app0,     app,  factory, 0x10000,  0x180000,
+fllog,    data, spiffs,  0x190000, 0x260000,
+coredump, data, coredump,0x3F0000, 0x10000,
