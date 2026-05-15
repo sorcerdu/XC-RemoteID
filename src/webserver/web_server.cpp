@@ -13,6 +13,9 @@ const char *XCWebServer::AP_PASS = "12345678";
 
 static ::WebServer s_server(80);
 static char s_ap_ssid[24];
+static const IPAddress AP_IP(10, 0, 0, 1);
+static const IPAddress AP_GATEWAY(10, 0, 0, 1);
+static const IPAddress AP_SUBNET(255, 255, 255, 0);
 
 static const char PAGE_HTML[] PROGMEM = R"====(<!DOCTYPE html>
 <html lang="zh-CN">
@@ -337,6 +340,7 @@ void XCWebServer::start_ap()
     WiFi.macAddress(mac);
     snprintf(s_ap_ssid, sizeof(s_ap_ssid), "XC-RID-%02X%02X%02X", mac[3], mac[4], mac[5]);
 
+    WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET);
     WiFi.softAP(s_ap_ssid, AP_PASS);
     Serial.printf("[WebServer] AP: %s  IP: %s\n",
                   s_ap_ssid, WiFi.softAPIP().toString().c_str());

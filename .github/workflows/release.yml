@@ -87,7 +87,7 @@ jobs:
 
             ### 首次配置
 
-            上电后连接 Wi-Fi 热点 `XC-RID-XXXXXX`（密码 `12345678`），访问 `http://192.168.4.1` 完成配置。
+            上电后连接 Wi-Fi 热点 `XC-RID-XXXXXX`（密码 `12345678`），访问 `http://10.0.0.1` 完成配置。
           files: firmware/*.bin
           draft: false
           prerelease: false
