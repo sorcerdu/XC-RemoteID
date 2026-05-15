@@ -16,7 +16,6 @@ jobs:
           - esp32c3_supermini
           - esp32c3_devkit
           - xiao_esp32c3
-          - esp32_wroom32
 
     steps:
       - name: Checkout
@@ -80,7 +79,8 @@ jobs:
             | `XC-RemoteID-esp32c3_supermini-*.bin` | ESP32-C3 Super Mini | BT5，推荐测试板型 |
             | `XC-RemoteID-esp32c3_devkit-*.bin` | ESP32-C3 DevKit | BT5 |
             | `XC-RemoteID-xiao_esp32c3-*.bin` | XIAO ESP32-C3 | BT5 |
-            | `XC-RemoteID-esp32_wroom32-*.bin` | ESP32 WROOM-32 | BT4.2，仅开发调试，不推荐正式部署 |
+
+            ESP32 WROOM-32 仅用于开发调试，不随 Release 自动构建。
 
             ### 烧录方法
 
