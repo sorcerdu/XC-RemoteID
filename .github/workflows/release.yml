@@ -63,31 +63,38 @@ jobs:
           body: |
             ## XC-RemoteID ${{ github.ref_name }}
 
-            基于 ESP32 的民用无人机运行识别固件，符合 GB 46750-2025。
+            面向 GB 46750-2025 广播式运行识别的 ESP32 固件测试版。
+
+            ### 当前状态
+
+            已实现 BLE/Wi-Fi 广播、GB 数据包编码、MAVLink 输入、本地滚动存储和起飞联锁。
+            网络式上报和防篡改/防破坏设计尚未实现，当前不应声明为完整 GB 46750-2025 成品合规版本。
 
             ### 固件下载
 
             根据你的板型选择对应固件：
 
-            | 固件文件 | 适用板型 | BLE |
-            |---------|---------|-----|
-            | `XC-RemoteID-esp32s3_devkit-*.bin` | ESP32-S3 DevKitC-1 | BT5 ✅ |
-            | `XC-RemoteID-esp32c3_supermini-*.bin` | ESP32-C3 Super Mini | BT5 ✅ |
-            | `XC-RemoteID-esp32c3_devkit-*.bin` | ESP32-C3 DevKit | BT5 ✅ |
-            | `XC-RemoteID-xiao_esp32c3-*.bin` | XIAO ESP32-C3 | BT5 ✅ |
-            | `XC-RemoteID-esp32_wroom32-*.bin` | ESP32 WROOM-32 | BT4.2 ⚠️ |
+            | 固件文件 | 适用板型 | 说明 |
+            |---------|---------|------|
+            | `XC-RemoteID-esp32s3_devkit-*.bin` | ESP32-S3 DevKitC-1 | BT5 |
+            | `XC-RemoteID-esp32c3_supermini-*.bin` | ESP32-C3 Super Mini | BT5，推荐测试板型 |
+            | `XC-RemoteID-esp32c3_devkit-*.bin` | ESP32-C3 DevKit | BT5 |
+            | `XC-RemoteID-xiao_esp32c3-*.bin` | XIAO ESP32-C3 | BT5 |
+            | `XC-RemoteID-esp32_wroom32-*.bin` | ESP32 WROOM-32 | BT4.2，仅开发调试，不推荐正式部署 |
 
             ### 烧录方法
 
-            使用 [esptool](https://github.com/espressif/esptool) 或 [ESP Flash Download Tool](https://www.espressif.com/en/support/download/other-tools) 烧录：
+            当前自动构建附件为单 app 固件，刷写地址为 `0x10000`：
 
             ```bash
             esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x10000 XC-RemoteID-esp32c3_supermini-*.bin
             ```
+
+            首次刷写裸开发板时，需要设备已有正确 bootloader 和分区表；merged 固件后续补充。
 
             ### 首次配置
 
             上电后连接 Wi-Fi 热点 `XC-RID-XXXXXX`（密码 `12345678`），访问 `http://10.0.0.1` 完成配置。
           files: firmware/*.bin
           draft: false
-          prerelease: false
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
