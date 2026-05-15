@@ -19,4 +19,4 @@ extern mavlink_system_t mavlink_system;
 void mavlink_serial_send(mavlink_channel_t chan, const uint8_t *buf, uint8_t len);
 
 #define MAVLINK_USE_CONVENIENCE_FUNCTIONS
-#include <generated/ardupilotmega/mavlink.h>
+#include <generated/common/mavlink.h>

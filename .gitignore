@@ -13,7 +13,6 @@ lib/mavlink2/generated/cubepilot/
 lib/mavlink2/generated/development/
 lib/mavlink2/generated/icarous/
 lib/mavlink2/generated/loweheiser/
-lib/mavlink2/generated/minimal/
 lib/mavlink2/generated/python_array_test/
 lib/mavlink2/generated/standard/
 lib/mavlink2/generated/storm32/
