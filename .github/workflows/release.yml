@@ -17,12 +17,16 @@ jobs:
         include:
           - env: esp32s3_devkit
             chip: esp32s3
+            flash_size: 8MB
           - env: esp32c3_supermini
             chip: esp32c3
+            flash_size: 4MB
           - env: esp32c3_devkit
             chip: esp32c3
+            flash_size: 4MB
           - env: xiao_esp32c3
             chip: esp32c3
+            flash_size: 4MB
 
     steps:
       - name: Checkout
@@ -50,10 +54,10 @@ jobs:
             -o XC-RemoteID-${{ matrix.env }}-merged-${VERSION}.bin \
             --flash_mode keep \
             --flash_freq keep \
-            --flash_size keep \
+            --flash_size ${{ matrix.flash_size }} \
             0x0 .pio/build/${{ matrix.env }}/bootloader.bin \
             0x8000 .pio/build/${{ matrix.env }}/partitions.bin \
-            0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
+            0xe000 $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
             0x10000 .pio/build/${{ matrix.env }}/firmware.bin
 
       - name: Upload artifact
@@ -120,4 +124,4 @@ jobs:
             上电后连接 Wi-Fi 热点 `XC-RID-XXXXXX`（密码 `12345678`），访问 `http://10.0.0.1` 完成配置。
           files: firmware/*.bin
           draft: false
-          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
+          prerelease: false
