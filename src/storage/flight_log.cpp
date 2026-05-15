@@ -11,14 +11,24 @@ uint32_t FlightLog::_total_records = 0;
 uint32_t FlightLog::_file_index    = 0;
 uint32_t FlightLog::_file_records  = 0;
 char     FlightLog::_path[32]      = {};
+bool     FlightLog::_mounted       = false;
 
 void FlightLog::init()
 {
     // 挂载 fllog 分区（LittleFS）
-    if (!LittleFS.begin(true, "/fllog", 10, "fllog")) {
-        Serial.println("[FlightLog] mount failed");
-        return;
+    // 首先尝试不格式化挂载，保护已有查证数据（§5.1.8 不可删除）
+    if (!LittleFS.begin(false, "/fllog", 10, "fllog")) {
+        // 挂载失败：可能是全新分区（从未格式化）或文件系统损坏
+        // 尝试格式化一次（仅新设备首次使用时会走到这里）
+        Serial.println("[FlightLog] mount failed, attempting format for new partition...");
+        if (!LittleFS.begin(true, "/fllog", 10, "fllog")) {
+            Serial.println("[FlightLog] format failed - logging disabled");
+            _mounted = false;
+            return;
+        }
+        Serial.println("[FlightLog] partition formatted OK");
     }
+    _mounted = true;
 
     // 读取上次写入状态
     File meta = LittleFS.open("/meta.bin", "r");
@@ -37,8 +47,6 @@ void FlightLog::init()
 
 void FlightLog::write(const RIDData &data)
 {
-    if (!data.location_valid) return;
-
     snprintf(_path, sizeof(_path), "/log_%05u.bin", (unsigned)_file_index);
 
     // 新文件用 "w"，追加用 "a"
@@ -50,25 +58,41 @@ void FlightLog::write(const RIDData &data)
 
     LogRecord rec{};
     rec.timestamp_ms   = data.timestamp_ms;
-    rec.lat_e7         = (int32_t)(data.lat * 1e7);
-    rec.lon_e7         = (int32_t)(data.lon * 1e7);
-    rec.geo_alt_x2     = (int16_t)((data.geo_alt_m + 1000.0f) * 2.0f);
-    rec.rel_alt_x2     = (int16_t)((data.rel_alt_m + 9000.0f) * 2.0f);
-    rec.ground_spd_x10 = (int16_t)(data.ground_speed_ms * 10.0f);
-    rec.track_x10      = (int16_t)(data.track_deg * 10.0f);
+
+    // 位置：location_valid=false 时写入"未知"标记（0x7FFFFFFF 对应 NaN 经纬度）
+    // 编码器用 0xFFFFFFFF 表示未知，存储层同样用 INT32_MAX 作为哨兵
+    if (data.location_valid) {
+        rec.lat_e7 = (int32_t)(data.lat * 1e7);
+        rec.lon_e7 = (int32_t)(data.lon * 1e7);
+    } else {
+        rec.lat_e7 = INT32_MAX;  // 未知标记
+        rec.lon_e7 = INT32_MAX;
+    }
+
+    // 高度/速度：MAVLink 未知值为 -1000m，编码为 0（与"未知"约定一致）
+    rec.geo_alt_x2     = isnan(data.geo_alt_m)  ? 0 : (int16_t)((data.geo_alt_m  + 1000.0f) * 2.0f);
+    rec.rel_alt_x2     = isnan(data.rel_alt_m)  ? 0 : (int16_t)((data.rel_alt_m  + 9000.0f) * 2.0f);
+    rec.ground_spd_x10 = isnan(data.ground_speed_ms) ? 0 : (int16_t)(data.ground_speed_ms * 10.0f);
+    rec.track_x10      = isnan(data.track_deg)  ? 0 : (int16_t)(data.track_deg * 10.0f);
     {
-        float abs_v = fabsf(data.vert_speed_ms);
+        float abs_v = isnan(data.vert_speed_ms) ? 0.0f : fabsf(data.vert_speed_ms);
         uint8_t enc = (uint8_t)(abs_v * 2.0f);
-        if (enc > 127) enc = 127;
-        rec.vert_spd = (data.vert_speed_ms < 0)
-                       ? (int8_t)(0x80 | enc) : (int8_t)enc;
+        if (enc > 126) enc = 126;
+        rec.vert_spd = (!isnan(data.vert_speed_ms) && data.vert_speed_ms < 0)
+                       ? (int8_t)(int8_t(0x80) | (int8_t)enc) : (int8_t)enc;
     }
     rec.op_status  = (uint8_t)data.op_status;
     rec.horiz_acc  = (uint8_t)data.horiz_acc;
     rec.vert_acc   = (uint8_t)data.vert_acc;
 
-    f.write((uint8_t *)&rec, sizeof(rec));
+    // 检查写入结果，只有成功才推进计数器
+    const size_t written = f.write((uint8_t *)&rec, sizeof(rec));
     f.close();
+
+    if (written != sizeof(rec)) {
+        Serial.printf("[FlightLog] write failed: %s\n", _path);
+        return;
+    }
 
     _file_records++;
     _total_records++;
@@ -79,8 +103,8 @@ void FlightLog::write(const RIDData &data)
         _file_records = 0;
     }
 
-    // 每 100 条持久化一次元数据
-    if (_total_records % 100 == 0) {
+    // 每 10 条持久化一次元数据（约 100s），减少断电丢失窗口
+    if (_total_records % 10 == 0) {
         save_meta();
     }
 }

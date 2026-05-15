@@ -91,15 +91,24 @@ bool BLE_TX::transmit(const RIDData &data)
     memcpy(_payload + 6, gb_buf, gb_len);
 
 #if HAS_BT5_EXT_ADV
-    s_advert.setAdvertisingData(0, payload_len, _payload);
+    if (!s_advert.setAdvertisingData(0, payload_len, _payload)) {
+        Serial.println("[BLE] setAdvertisingData failed");
+        return false;
+    }
     if (!_started) {
         // start() 必须在 setAdvertisingData 之后调用
-        s_advert.start(1, 0);  // numAdv=1, firstAdv=0
+        if (!s_advert.start(1, 0)) {  // numAdv=1, firstAdv=0
+            Serial.println("[BLE] start failed");
+            return false;
+        }
         _started = true;
         Serial.printf("[BLE] BT5 ext adv started, payload=%d bytes\n", payload_len);
     }
 #else
-    esp_ble_gap_config_adv_data_raw(_payload, (uint8_t)payload_len);
+    if (esp_ble_gap_config_adv_data_raw(_payload, (uint8_t)payload_len) != ESP_OK) {
+        Serial.println("[BLE] config_adv_data_raw failed");
+        return false;
+    }
 #endif
 
     return true;

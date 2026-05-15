@@ -41,17 +41,16 @@ void GB46750Encoder::write_le48(uint8_t *p, uint64_t v)
 
 // ── 各字段编码 ────────────────────────────────────────────────────────────────
 
-// 001 唯一产品识别码 20字节 大端序 ASCII，不足高位补 NULL
+// 001 唯一产品识别码 20字节 ASCII 左对齐，不足后补 NULL（与 reg_mark 保持一致）
 int GB46750Encoder::encode_uas_id(const RIDData &d, uint8_t *p)
 {
     memset(p, 0, 20);
     size_t len = strnlen(d.uas_id, 20);
-    // 高位补 NULL，低位放有效字符（大端序）
-    memcpy(p + (20 - len), d.uas_id, len);
+    memcpy(p, d.uas_id, len);
     return 20;
 }
 
-// 002 实名登记标志 8字节 大端序 ASCII，未填写补 NULL
+// 002 实名登记标志 8字节 ASCII 左对齐，不足后补 NULL
 int GB46750Encoder::encode_reg_mark(const RIDData &d, uint8_t *p)
 {
     memset(p, 0, 8);
@@ -172,7 +171,8 @@ int GB46750Encoder::encode_vert_speed(const RIDData &d, uint8_t *p)
     } else {
         float abs_v = fabsf(d.vert_speed_ms);
         uint8_t enc = static_cast<uint8_t>(abs_v * 2.0f);
-        if (enc > 127) enc = 127;
+        // 限制 ≤126：下降时 0x80|127=0xFF 与"未知"标记冲突
+        if (enc > 126) enc = 126;
         uint8_t flag = (d.vert_speed_ms < 0) ? 0x80 : 0x00; // 下降时第1位为1
         p[0] = flag | enc;
     }
@@ -266,7 +266,10 @@ int GB46750Encoder::encode(const RIDData &data, uint8_t *buf, size_t buf_len,
     }
 
     // 数据内容区（先写到临时缓冲，再填长度）
-    uint8_t content[200];
+    // GB_MAX_PACKET_LEN=220，减去 6 字节头（type+ver+len+bitmap×3），内容区最大 214 字节
+    // 实测 21 个字段最大约 72 字节，此处留足余量
+    static_assert(GB_MAX_PACKET_LEN > 6, "GB_MAX_PACKET_LEN too small");
+    uint8_t content[GB_MAX_PACKET_LEN - 6];
     uint8_t bitmap[3] = {0, 0, 0};
     int content_len = 0;
 
@@ -315,8 +318,8 @@ int GB46750Encoder::encode(const RIDData &data, uint8_t *buf, size_t buf_len,
     // 数据类型
     buf[offset++] = GB_DATA_TYPE;
 
-    // 版本号：第1~3位固定"001"(0x20)，第4~8位为 version_minor
-    buf[offset++] = GB_VERSION_BASE | (version_minor & 0x3F);
+    // 版本号：高3位固定"001"(bit7~5 = 0x20)，低5位为 version_minor
+    buf[offset++] = GB_VERSION_BASE | (version_minor & 0x1F);
 
     // 数据长度（数据内容项字节数，不含标识字节）
     buf[offset++] = static_cast<uint8_t>(content_len);

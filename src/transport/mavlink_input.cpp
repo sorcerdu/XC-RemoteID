@@ -33,7 +33,9 @@ void MAVLinkInput::init(int rx_pin, int tx_pin, uint32_t baudrate)
     _data.gcs_pos_type = GBGCSPosType::TAKEOFF;
 
     strncpy(_data.uas_id,   Parameters::get_str(PARAM_UAS_ID),   20);
+    _data.uas_id[20] = '\0';
     strncpy(_data.reg_mark, Parameters::get_str(PARAM_REG_MARK),  8);
+    _data.reg_mark[8] = '\0';
 }
 
 // ── 主循环 ────────────────────────────────────────────────────────────────────
@@ -82,31 +84,76 @@ void MAVLinkInput::process_packet(void *msg_ptr)
         break;
     }
 
+    case MAVLINK_MSG_ID_SYSTEM_TIME: {
+        // 建立 Unix 时间基准，用于还原 OPEN_DRONE_ID_LOCATION.timestamp
+        mavlink_system_time_t st;
+        mavlink_msg_system_time_decode(&msg, &st);
+        if (st.time_unix_usec > 0) {
+            _unix_base_us  = st.time_unix_usec;
+            _boot_base_ms  = now_ms;
+        }
+        break;
+    }
+
     case MAVLINK_MSG_ID_OPEN_DRONE_ID_LOCATION: {
         mavlink_open_drone_id_location_t loc;
         mavlink_msg_open_drone_id_location_decode(&msg, &loc);
 
-        _data.lat             = loc.latitude  * 1.0e-7;
-        _data.lon             = loc.longitude * 1.0e-7;
-        _data.track_deg       = loc.direction * 0.01f;
-        _data.ground_speed_ms = loc.speed_horizontal * 0.01f;
-        _data.vert_speed_ms   = loc.speed_vertical   * 0.01f;
-        _data.geo_alt_m       = loc.altitude_geodetic;
-        _data.baro_alt_m      = loc.altitude_barometric;
-        _data.rel_alt_m       = loc.height;
-        _data.horiz_acc       = map_horiz_acc(loc.horizontal_accuracy);
-        _data.vert_acc        = map_vert_acc(loc.vertical_accuracy);
-        _data.spd_acc         = map_spd_acc(loc.speed_accuracy);
-        _data.ts_acc          = map_ts_acc(loc.timestamp_accuracy);
-        _data.op_status       = map_status(loc.status);
+        // 未知位置：MAVLink 规定 lat==0 && lon==0 表示未知，不标记为有效
+        const bool pos_known = !(loc.latitude == 0 && loc.longitude == 0);
+        if (pos_known) {
+            _data.lat = loc.latitude  * 1.0e-7;
+            _data.lon = loc.longitude * 1.0e-7;
+        }
 
-        if (loc.timestamp > 0) {
-            _data.timestamp_ms = (uint64_t)(1546300800UL + (uint32_t)loc.timestamp) * 1000ULL;
+        // 未知速度/高度：MAVLink 规定的未知值
+        _data.track_deg       = (loc.direction == 36100) ? NAN : loc.direction * 0.01f;
+        _data.ground_speed_ms = (loc.speed_horizontal == 25500) ? NAN : loc.speed_horizontal * 0.01f;
+        _data.vert_speed_ms   = (loc.speed_vertical == 6300) ? NAN : loc.speed_vertical * 0.01f;
+        _data.geo_alt_m       = (loc.altitude_geodetic   <= -999.0f) ? NAN : loc.altitude_geodetic;
+        _data.baro_alt_m      = (loc.altitude_barometric <= -999.0f) ? NAN : loc.altitude_barometric;
+        _data.rel_alt_m       = (loc.height <= -999.0f) ? NAN : loc.height;
+
+        _data.horiz_acc = map_horiz_acc(loc.horizontal_accuracy);
+        _data.vert_acc  = map_vert_acc(loc.vertical_accuracy);
+        _data.spd_acc   = map_spd_acc(loc.speed_accuracy);
+        _data.ts_acc    = map_ts_acc(loc.timestamp_accuracy);
+        _data.op_status = map_status(loc.status);
+
+        // 时间戳：loc.timestamp 是"UTC 整点后的秒数"（0~3599.999s）
+        // 需要结合 SYSTEM_TIME 消息建立的 Unix 时间基准来还原完整 Unix ms
+        if (_unix_base_us > 0 && loc.timestamp >= 0.0f && loc.timestamp < 3600.0f) {
+            // 从基准时间推算当前 Unix 时间（ms）
+            const uint32_t now_ms = millis();
+            const uint64_t elapsed_ms = (now_ms >= _boot_base_ms)
+                                        ? (now_ms - _boot_base_ms)
+                                        : (now_ms + (0xFFFFFFFFUL - _boot_base_ms) + 1);
+            const uint64_t unix_now_ms = (_unix_base_us / 1000ULL) + elapsed_ms;
+
+            // 对齐到整点：用 loc.timestamp 替换当前时间的"整点内秒数"
+            const uint64_t hour_base_ms = (unix_now_ms / 3600000ULL) * 3600000ULL;
+            const uint64_t ts_ms = hour_base_ms + (uint64_t)(loc.timestamp * 1000.0f);
+
+            // 防止跨整点时出现大跳变（±30min 容差）
+            const int64_t diff = (int64_t)ts_ms - (int64_t)unix_now_ms;
+            if (diff > 1800000LL) {
+                _data.timestamp_ms = ts_ms - 3600000ULL;  // 上一个整点
+            } else if (diff < -1800000LL) {
+                _data.timestamp_ms = ts_ms + 3600000ULL;  // 下一个整点
+            } else {
+                _data.timestamp_ms = ts_ms;
+            }
         } else {
+            // 无 SYSTEM_TIME 基准，时间戳置 0（未知）
             _data.timestamp_ms = 0;
         }
 
-        _data.location_valid = true;
+        _data.location_valid = pos_known;
+        // 位置未知时，除 EMERGENCY 外所有状态都覆盖为 RID_FAIL_NORMAL
+        // EMERGENCY 保留原状态，让接收端知道是紧急情况而非普通 RID 失效
+        if (!pos_known && _data.op_status != GBOpStatus::EMERGENCY) {
+            _data.op_status = GBOpStatus::RID_FAIL_NORMAL;
+        }
         _last_location_ms    = now_ms;
         break;
     }
@@ -129,10 +176,14 @@ void MAVLinkInput::process_packet(void *msg_ptr)
         mavlink_open_drone_id_system_update_t upd;
         mavlink_msg_open_drone_id_system_update_decode(&msg, &upd);
 
-        _data.gcs_lat = upd.operator_latitude  * 1.0e-7;
-        _data.gcs_lon = upd.operator_longitude * 1.0e-7;
-        _data.gcs_alt = upd.operator_altitude_geo;
-        _data.gcs_pos_valid = true;
+        // 与 SYSTEM 分支保持一致：0/0 表示未知，不标记为有效
+        const bool gcs_known = !(upd.operator_latitude == 0 && upd.operator_longitude == 0);
+        if (gcs_known) {
+            _data.gcs_lat = upd.operator_latitude  * 1.0e-7;
+            _data.gcs_lon = upd.operator_longitude * 1.0e-7;
+            _data.gcs_alt = upd.operator_altitude_geo;
+        }
+        _data.gcs_pos_valid = gcs_known;
         _last_system_ms = now_ms;
         break;
     }
@@ -210,15 +261,17 @@ GBSpdAcc MAVLinkInput::map_spd_acc(uint8_t v)
 
 GBTsAcc MAVLinkInput::map_ts_acc(uint8_t v)
 {
-    if (v >= 15) return GBTsAcc::LTE_10MS;
-    if (v >= 14) return GBTsAcc::LTE_20MS;
-    if (v >= 13) return GBTsAcc::LTE_50MS;
-    if (v >= 10) return GBTsAcc::LTE_100MS;
-    if (v >= 8)  return GBTsAcc::LTE_200MS;
-    if (v >= 6)  return GBTsAcc::LTE_300MS;
-    if (v >= 4)  return GBTsAcc::LTE_400MS;
-    if (v >= 2)  return GBTsAcc::LTE_500MS;
-    return GBTsAcc::UNKNOWN_OR_GT_500MS;
+    // MAV_ODID_TIME_ACC: 0=Unknown, 1=≤0.1s, 2=≤0.2s, ..., 15=≤1.5s
+    // 值越小精度越高（与 horiz/vert/spd_acc 方向相同）
+    switch (v) {
+    case 1:  return GBTsAcc::LTE_100MS;
+    case 2:  return GBTsAcc::LTE_200MS;
+    case 3:  return GBTsAcc::LTE_300MS;
+    case 4:  return GBTsAcc::LTE_400MS;
+    case 5:  return GBTsAcc::LTE_500MS;
+    // MAVLink 0.6~1.5s 均超过 500ms，映射为 UNKNOWN
+    default: return GBTsAcc::UNKNOWN_OR_GT_500MS;
+    }
 }
 
 GBOpStatus MAVLinkInput::map_status(uint8_t v)

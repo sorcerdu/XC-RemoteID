@@ -34,9 +34,13 @@ bool WiFi_TX::init()
 
     esp_base_mac_addr_set(_mac);
 
-    // 启动 SoftAP（不可见，不允许连接）用于发送原始帧
-    // SSID 设为空，不广播 SSID
-    WiFi.softAP("", "", Parameters::get_uint8("WIFI_CH"), true, 0);
+    // 启动 SoftAP（隐藏，不允许连接）用于发送原始帧
+    // 使用随机 SSID 避免空 SSID 在不同 Arduino-ESP32 版本上行为不一致
+    char hidden_ssid[16];
+    snprintf(hidden_ssid, sizeof(hidden_ssid), "RID-%02X%02X%02X",
+             _mac[3], _mac[4], _mac[5]);
+    WiFi.softAP(hidden_ssid, nullptr,
+                Parameters::get_uint8(PARAM_WIFI_CH), /*hidden=*/true, /*max_conn=*/0);
 
     if (esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20) != ESP_OK) {
         return false;
@@ -58,24 +62,30 @@ bool WiFi_TX::transmit(const RIDData &data)
     int gb_len = GB46750Encoder::encode(data, gb_buf, sizeof(gb_buf));
     if (gb_len <= 0) return false;
 
-    // 构造 Vendor IE
-    // vendor_ie_data_t: element_id(1) + length(1) + oui(3) + oui_type(1) + payload
-    vendor_ie_data_t ie;
-    ie.element_id    = WIFI_VENDOR_IE_ELEMENT_ID;  // 0xDD
-    ie.vendor_oui[0] = RID_OUI_0;
-    ie.vendor_oui[1] = RID_OUI_1;
-    ie.vendor_oui[2] = RID_OUI_2;
-    ie.vendor_oui_type = RID_OUI_TYPE;
-    ie.length = (uint8_t)(4 + gb_len);  // oui(3) + type(1) + payload
+    // vendor_ie_data_t.payload 是零长数组，不能直接在栈上使用。
+    // 按实际大小分配：element_id(1) + length(1) + oui(3) + oui_type(1) + payload(gb_len)
+    const size_t ie_size = sizeof(vendor_ie_data_t) + gb_len;
+    vendor_ie_data_t *ie = static_cast<vendor_ie_data_t *>(malloc(ie_size));
+    if (!ie) return false;
 
-    if (gb_len > (int)sizeof(ie.payload)) return false;
-    memcpy(ie.payload, gb_buf, gb_len);
+    ie->element_id      = WIFI_VENDOR_IE_ELEMENT_ID;  // 0xDD
+    ie->vendor_oui[0]   = RID_OUI_0;
+    ie->vendor_oui[1]   = RID_OUI_1;
+    ie->vendor_oui[2]   = RID_OUI_2;
+    ie->vendor_oui_type = RID_OUI_TYPE;
+    ie->length          = (uint8_t)(4 + gb_len);  // oui(3) + type(1) + payload
+    memcpy(ie->payload, gb_buf, gb_len);
 
     // 先移除旧 IE，再设置新 IE（Beacon + Probe Response）
-    esp_wifi_set_vendor_ie(false, WIFI_VND_IE_TYPE_BEACON,     WIFI_VND_IE_ID_0, &ie);
-    esp_wifi_set_vendor_ie(true,  WIFI_VND_IE_TYPE_BEACON,     WIFI_VND_IE_ID_0, &ie);
-    esp_wifi_set_vendor_ie(false, WIFI_VND_IE_TYPE_PROBE_RESP, WIFI_VND_IE_ID_0, &ie);
-    esp_wifi_set_vendor_ie(true,  WIFI_VND_IE_TYPE_PROBE_RESP, WIFI_VND_IE_ID_0, &ie);
+    esp_wifi_set_vendor_ie(false, WIFI_VND_IE_TYPE_BEACON,     WIFI_VND_IE_ID_0, ie);
+    bool ok = (esp_wifi_set_vendor_ie(true, WIFI_VND_IE_TYPE_BEACON, WIFI_VND_IE_ID_0, ie) == ESP_OK);
+    if (ok) {
+        esp_wifi_set_vendor_ie(false, WIFI_VND_IE_TYPE_PROBE_RESP, WIFI_VND_IE_ID_0, ie);
+        ok = (esp_wifi_set_vendor_ie(true, WIFI_VND_IE_TYPE_PROBE_RESP, WIFI_VND_IE_ID_0, ie) == ESP_OK);
+    }
 
-    return true;
+    free(ie);
+
+    if (!ok) Serial.println("[WiFi] set_vendor_ie failed");
+    return ok;
 }

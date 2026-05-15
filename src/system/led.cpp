@@ -36,6 +36,7 @@ void Led::init()
 
 void Led::set(State s)
 {
+    if (_state == s) return;  // 状态未变化，不重置定时器
     _state = s;
     _last_toggle_ms = 0;
     _led_on = false;

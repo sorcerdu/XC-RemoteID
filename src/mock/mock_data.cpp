@@ -30,7 +30,7 @@ void MockData::init(RIDData &data)
     data.ua_class     = GBUAClass::LIGHT;
     data.coord_type   = GBCoordType::WGS84;
 
-    // 遥控站：起飞点（天安门广场地面）
+    // 遥控站：起飞点（上海青浦淀山湖地面）
     data.gcs_pos_type = GBGCSPosType::TAKEOFF;
     data.gcs_lat      = CENTER_LAT;
     data.gcs_lon      = CENTER_LON;

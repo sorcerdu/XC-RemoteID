@@ -77,8 +77,13 @@ void setup()
 #endif
 
     // BLE + WiFi 广播同时启动（GB 46750 §5.1.1）
-    ble.init();
-    wifi_tx.init();
+    // 初始化结果写入 MAVLinkInput，供联锁检查
+    const bool ble_init_ok  = ble.init();
+    const bool wifi_init_ok = wifi_tx.init();
+    mavlink.set_ble_ok(ble_init_ok);
+    mavlink.set_wifi_ok(wifi_init_ok);
+    if (!ble_init_ok)  Serial.println("[XC-RID] BLE init FAILED");
+    if (!wifi_init_ok) Serial.println("[XC-RID] WiFi init FAILED");
 
     Led::set(Led::State::WAIT_DATA);
 }
@@ -106,18 +111,23 @@ void loop()
     Led::update();
 
     // 广播 1Hz（GB 46750 §5.1.3）
+    // 无论 location_valid 与否都广播：失效时编码器自动填 0xFF 位置未知，
+    // op_status 携带 RID_FAIL 状态，满足 §5.1.7b 飞行中失效告警要求
     static uint32_t last_broadcast_ms = 0;
     if (now_ms - last_broadcast_ms >= 1000) {
         last_broadcast_ms = now_ms;
-        if (data.location_valid) {
-            ble.transmit(data);
-            wifi_tx.transmit(data);
-        }
+        const bool ble_ok  = ble.transmit(data);
+        const bool wifi_ok = wifi_tx.transmit(data);
+#ifndef MOCK_DATA
+        // 将实际发送结果反馈给联锁，运行中发送失败会触发 PRE_ARM_FAIL
+        Interlock::notify_tx_result(ble_ok, wifi_ok);
+#endif
     }
 
     // 存储 10s（GB 46750 §5.1.8）
+    // 失效时段也入库，op_status 字段标识失效，保证事后查证完整性
     static uint32_t last_storage_ms = 0;
-    if (data.location_valid && now_ms - last_storage_ms >= 10000) {
+    if (now_ms - last_storage_ms >= 10000) {
         last_storage_ms = now_ms;
         FlightLog::write(data);
     }

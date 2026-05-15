@@ -20,12 +20,23 @@ public:
     // 供 Interlock 调用
     void send_arm_status(bool ok, const char *reason);
 
+    // 供 Interlock 查询广播链路状态
+    bool ble_ok()  const { return _ble_ok; }
+    bool wifi_ok() const { return _wifi_ok; }
+    void set_ble_ok(bool v)  { _ble_ok  = v; }
+    void set_wifi_ok(bool v) { _wifi_ok = v; }
+
 private:
     RIDData  _data{};
-    uint32_t _last_location_ms = 0;
-    uint32_t _last_system_ms   = 0;
-    uint32_t _last_hb_ms       = 0;
-    uint8_t  _fc_sysid         = 0;
+    uint32_t _last_location_ms  = 0;
+    uint32_t _last_system_ms    = 0;
+    uint32_t _last_hb_ms        = 0;
+    uint8_t  _fc_sysid          = 0;
+    // Unix 时间基准：由 SYSTEM_TIME 消息建立
+    uint64_t _unix_base_us      = 0;  // 飞控 Unix 时间（µs）
+    uint32_t _boot_base_ms      = 0;  // 对应的 millis() 值
+    bool     _ble_ok            = false;
+    bool     _wifi_ok           = false;
 
     void process_packet(void *msg_ptr);
     void send_heartbeat();

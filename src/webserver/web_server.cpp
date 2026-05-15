@@ -367,27 +367,60 @@ void XCWebServer::handle_root()
 
 void XCWebServer::handle_save()
 {
-    if (s_server.hasArg("uas_id"))
-        Parameters::set_str(PARAM_UAS_ID,    s_server.arg("uas_id").c_str());
-    if (s_server.hasArg("reg_mark"))
-        Parameters::set_str(PARAM_REG_MARK,  s_server.arg("reg_mark").c_str());
-    if (s_server.hasArg("op_cat"))
-        Parameters::set_uint8(PARAM_OP_CATEGORY, (uint8_t)s_server.arg("op_cat").toInt());
-    if (s_server.hasArg("ua_class"))
-        Parameters::set_uint8(PARAM_UA_CLASS,    (uint8_t)s_server.arg("ua_class").toInt());
-    if (s_server.hasArg("uart_rx"))
-        Parameters::set_uint32(PARAM_UART_RX,    (uint32_t)s_server.arg("uart_rx").toInt());
-    if (s_server.hasArg("uart_tx"))
-        Parameters::set_uint32(PARAM_UART_TX,    (uint32_t)s_server.arg("uart_tx").toInt());
-    if (s_server.hasArg("baud"))
-        Parameters::set_uint32(PARAM_BAUDRATE,   (uint32_t)s_server.arg("baud").toInt());
+    // ── 输入校验 ──────────────────────────────────────────────────────────────
+    String uas_id   = s_server.hasArg("uas_id")   ? s_server.arg("uas_id")   : "";
+    String reg_mark = s_server.hasArg("reg_mark")  ? s_server.arg("reg_mark") : "";
+    String err;
 
+    uas_id.trim();
+    reg_mark.trim();
+
+    if (uas_id.length() == 0) {
+        err = "唯一产品识别码不能为空";
+    } else if (uas_id.length() > 20) {
+        err = "唯一产品识别码最多 20 位";
+    } else if (reg_mark.length() == 0) {
+        err = "实名登记标志不能为空";
+    } else if (reg_mark.length() > 8) {
+        err = "实名登记标志最多 8 位";
+    }
+
+    uint8_t op_cat   = s_server.hasArg("op_cat")   ? (uint8_t)s_server.arg("op_cat").toInt()   : 0;
+    uint8_t ua_class = s_server.hasArg("ua_class")  ? (uint8_t)s_server.arg("ua_class").toInt() : 0;
+    if (op_cat > 3)   err = "运行类别值无效（0~3）";
+    if (ua_class > 4) err = "无人机分类值无效（0~4）";
+
+    int uart_rx = s_server.hasArg("uart_rx") ? s_server.arg("uart_rx").toInt() : -1;
+    int uart_tx = s_server.hasArg("uart_tx") ? s_server.arg("uart_tx").toInt() : -1;
+    if (uart_rx < 0 || uart_rx > 48) err = "RX 引脚超出范围（0~48）";
+    if (uart_tx < 0 || uart_tx > 48) err = "TX 引脚超出范围（0~48）";
+    if (uart_rx == uart_tx)          err = "RX 和 TX 引脚不能相同";
+
+    uint32_t baud = s_server.hasArg("baud") ? (uint32_t)s_server.arg("baud").toInt() : 0;
+    if (baud == 0) err = "波特率不能为 0";
+
+    if (err.length() > 0) {
+        s_server.send(400, "text/html; charset=utf-8",
+            String("<html><head><meta charset='UTF-8'></head><body>"
+                   "<p style='font-family:sans-serif;padding:20px;color:#e02424'>配置错误：") +
+            err + " — <a href='/'>返回</a></p></body></html>");
+        return;
+    }
+
+    // ── 保存 ──────────────────────────────────────────────────────────────────
+    Parameters::set_str(PARAM_UAS_ID,      uas_id.c_str());
+    Parameters::set_str(PARAM_REG_MARK,    reg_mark.c_str());
+    Parameters::set_uint8(PARAM_OP_CATEGORY, op_cat);
+    Parameters::set_uint8(PARAM_UA_CLASS,    ua_class);
+    Parameters::set_uint32(PARAM_UART_RX,    (uint32_t)uart_rx);
+    Parameters::set_uint32(PARAM_UART_TX,    (uint32_t)uart_tx);
+    Parameters::set_uint32(PARAM_BAUDRATE,   baud);
     Parameters::set_uint8(PARAM_CONFIGURED, 1);
 
     s_server.send(200, "text/html; charset=utf-8",
-        "<html><head><meta charset=\'UTF-8\'>"
-        "<meta name=\'theme-color\' content=\'#1a56db\'></head><body>"
-        "<p style=\'font-family:sans-serif;padding:20px;color:#111827\'>已保存，正在重启...</p>"
+        "<html><head><meta charset='UTF-8'>"
+        "<meta name='theme-color' content='#1a56db'></head><body>"
+        "<p style='font-family:sans-serif;padding:20px;color:#111827'>已保存，正在重启...</p>"
         "</body></html>");
     delay(300);
     ESP.restart();
