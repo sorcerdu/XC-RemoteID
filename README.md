@@ -120,7 +120,13 @@ Release 同时提供两类固件：
 1. 用 USB 线连接 ESP32 开发板
 2. 打开 [https://esptool.spacehuhn.com](https://esptool.spacehuhn.com)
 3. 点击 **Connect**，在弹出的串口选择框中选择你的设备（通常显示为 `USB Serial` 或 `CP210x`）
-4. 点击 **Add File**，上传下载好的 `.bin` 文件；`merged` 固件地址填 `0x0`，`app` 固件地址填 `0x10000`
+4. 点击 **Add File**，按下表选择固件和地址：
+
+   | 你下载的固件 | 地址 |
+   |-------------|------|
+   | `...-merged-....bin`（推荐） | `0x0` |
+   | `...-app-....bin`（仅升级） | `0x10000` |
+
 5. 点击 **Program** 开始刷写，等待进度条完成
 6. 刷写完成后断开连接，重新上电
 

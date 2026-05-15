@@ -107,7 +107,16 @@ jobs:
 
             ### 烧录方法
 
-            首次刷写或不确定设备分区状态时，使用 `merged` 固件，地址 `0x0`：
+            **在线刷写（推荐）**：用 Chrome/Edge 打开 [esptool.spacehuhn.com](https://esptool.spacehuhn.com)，连接设备后 Add File，按下表选择地址：
+
+            | 固件类型 | 刷写地址 |
+            |---------|---------|
+            | `merged`（推荐首次刷写） | `0x0` |
+            | `app`（仅升级 app） | `0x10000` |
+
+            **命令行刷写**：
+
+            首次刷写或不确定分区状态时，使用 `merged` 固件，地址 `0x0`：
 
             ```bash
             esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 XC-RemoteID-esp32c3_supermini-merged-*.bin
