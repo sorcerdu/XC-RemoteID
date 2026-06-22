@@ -68,52 +68,72 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: firmware
           merge-multiple: true
 
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # 提取 "## v$VERSION" 到下一个 "## " 之间的内容
+          awk -v v="## v${VERSION}" '
+            $0 == v { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > version_notes.md
+
+          {
+            echo "## XC-RemoteID ${GITHUB_REF_NAME}"
+            echo ""
+            if [ -s version_notes.md ]; then
+              cat version_notes.md
+            else
+              echo "_未在 CHANGELOG.md 中找到 ${GITHUB_REF_NAME} 的变更记录。_"
+              echo ""
+            fi
+            cat <<'EOF'
+          ## 固件下载
+
+          根据你的板型选择对应固件，下载后刷写地址统一填 `0x0`：
+
+          | 固件文件 | 适用板型 |
+          |---------|---------|
+          | `XC-RemoteID-esp32s3_devkit-*.bin` | ESP32-S3 DevKitC-1 |
+          | `XC-RemoteID-esp32c3_supermini-*.bin` | ESP32-C3 Super Mini |
+          | `XC-RemoteID-esp32c3_devkit-*.bin` | ESP32-C3 DevKit |
+          | `XC-RemoteID-xiao_esp32c3-*.bin` | XIAO ESP32-C3 |
+
+          ESP32 WROOM-32 仅用于开发调试，不随 Release 自动构建。
+
+          ## 烧录方法
+
+          **在线刷写（推荐）**：用 Chrome/Edge 打开 [esptool.spacehuhn.com](https://esptool.spacehuhn.com)，连接设备后 Add File，地址填 `0x0`，点击 Program。
+
+          **命令行刷写**：
+
+          ```bash
+          esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 XC-RemoteID-esp32c3_supermini-*.bin
+          ```
+
+          ## 首次配置
+
+          上电后连接 Wi-Fi 热点 `XC-RID-XXXXXX`（密码 `12345678`），访问 `http://10.0.0.1` 完成配置。
+
+          > 网络式上报和防篡改/防破坏设计尚未实现，当前不应声明为完整 GB 46750-2025 成品合规版本。
+          EOF
+          } > release_body.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: XC-RemoteID ${{ github.ref_name }} 广播式运行识别测试版
-          body: |
-            ## XC-RemoteID ${{ github.ref_name }}
-
-            面向 GB 46750-2025 广播式运行识别的 ESP32 固件测试版。
-
-            ### 当前状态
-
-            已实现 BLE/Wi-Fi 广播、GB 数据包编码、MAVLink 输入、本地滚动存储和起飞联锁。
-            网络式上报和防篡改/防破坏设计尚未实现，当前不应声明为完整 GB 46750-2025 成品合规版本。
-
-            ### 固件下载
-
-            根据你的板型选择对应固件，下载后刷写地址统一填 `0x0`：
-
-            | 固件文件 | 适用板型 |
-            |---------|---------|
-            | `XC-RemoteID-esp32s3_devkit-*.bin` | ESP32-S3 DevKitC-1 |
-            | `XC-RemoteID-esp32c3_supermini-*.bin` | ESP32-C3 Super Mini |
-            | `XC-RemoteID-esp32c3_devkit-*.bin` | ESP32-C3 DevKit |
-            | `XC-RemoteID-xiao_esp32c3-*.bin` | XIAO ESP32-C3 |
-
-            ESP32 WROOM-32 仅用于开发调试，不随 Release 自动构建。
-
-            ### 烧录方法
-
-            **在线刷写（推荐）**：用 Chrome/Edge 打开 [esptool.spacehuhn.com](https://esptool.spacehuhn.com)，连接设备后 Add File，地址填 `0x0`，点击 Program。
-
-            **命令行刷写**：
-
-            ```bash
-            esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 XC-RemoteID-esp32c3_supermini-*.bin
-            ```
-
-            ### 首次配置
-
-            上电后连接 Wi-Fi 热点 `XC-RID-XXXXXX`（密码 `12345678`），访问 `http://10.0.0.1` 完成配置。
+          name: XC-RemoteID ${{ github.ref_name }}
+          body_path: release_body.md
           files: firmware/*.bin
           draft: false
           prerelease: false
