@@ -63,8 +63,10 @@ bool WiFi_TX::transmit(const RIDData &data)
     if (gb_len <= 0) return false;
 
     // vendor_ie_data_t.payload 是零长数组，不能直接在栈上使用。
-    // 按实际大小分配：element_id(1) + length(1) + oui(3) + oui_type(1) + payload(gb_len)
-    const size_t ie_size = sizeof(vendor_ie_data_t) + gb_len;
+    // payload 内容：[counter 1B][GB 包 gb_len B]
+    // counter 与 BLE 链路保持一致（ASTM F3411 / OpenDroneID 兼容封装）
+    const size_t payload_len = 1 + gb_len;
+    const size_t ie_size = sizeof(vendor_ie_data_t) + payload_len;
     vendor_ie_data_t *ie = static_cast<vendor_ie_data_t *>(malloc(ie_size));
     if (!ie) return false;
 
@@ -73,8 +75,9 @@ bool WiFi_TX::transmit(const RIDData &data)
     ie->vendor_oui[1]   = RID_OUI_1;
     ie->vendor_oui[2]   = RID_OUI_2;
     ie->vendor_oui_type = RID_OUI_TYPE;
-    ie->length          = (uint8_t)(4 + gb_len);  // oui(3) + type(1) + payload
-    memcpy(ie->payload, gb_buf, gb_len);
+    ie->length          = (uint8_t)(4 + payload_len);  // oui(3) + type(1) + counter(1) + gb_len
+    ie->payload[0]      = _counter++;
+    memcpy(ie->payload + 1, gb_buf, gb_len);
 
     // 先移除旧 IE，再设置新 IE（Beacon + Probe Response）
     esp_wifi_set_vendor_ie(false, WIFI_VND_IE_TYPE_BEACON,     WIFI_VND_IE_ID_0, ie);

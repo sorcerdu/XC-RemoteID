@@ -15,4 +15,5 @@ public:
 private:
     bool    _initialised = false;
     uint8_t _mac[6];
+    uint8_t _counter = 0;  // Message counter，与 BLE 链路一致
 };
